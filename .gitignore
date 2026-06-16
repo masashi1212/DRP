@@ -1,0 +1,15 @@
+# Results
+results/
+epymarl/results/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# Conda / pip
+*.egg
