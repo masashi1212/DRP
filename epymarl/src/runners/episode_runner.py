@@ -103,8 +103,6 @@ class EpisodeRunner:
 
         if env_info.get("goal_cost") is not None:
             cur_stats["goal_n_episodes"] = 1 + cur_stats.get("goal_n_episodes", 0)
-        cur_stats["cost"] = cur_stats.get("cost", 0) + int(env_info.get("cost", 0))
-        cur_stats["goal_cost"] = cur_stats.get("goal_cost", 0) + int(env_info.get("goal_cost") or 0)
 
         if not test_mode:
             self.t_env += self.t
