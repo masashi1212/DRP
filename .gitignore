@@ -13,3 +13,6 @@ __pycache__/
 
 # Conda / pip
 *.egg
+
+# Myself
+MyMemos/
