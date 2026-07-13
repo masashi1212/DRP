@@ -48,6 +48,7 @@ def run(_run, _config, _log):
     )
 
     args.unique_token = unique_token
+    _run.info["unique_token"] = unique_token
     if args.use_tensorboard:
         tb_logs_direc = os.path.join(
             dirname(dirname(abspath(__file__))), "results", "tb_logs"
