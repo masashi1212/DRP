@@ -312,33 +312,28 @@ class DrpEnv(gym.Env):
 		
 		# 1) 行動が有効か無効かを判定する（obs_prepare & obs_onehot_prepareを計算するため）．
 		for i in range(self.agent_num):
-			planned_action = self.planned_actions[i]
 			executed_action = self.executed_actions[i]
-			action_i = self.executed_actions[i]
 
 			# 1) 各エージェントの行動が有効か（移動可能か）, to output obs_prepare: 
 			# 移動不可能の場合 ⇢ obs_prepare.append( self.obs_old[i])
-			# print("Avaible actions",self.get_avail_agent_actions(i, self.n_actions)[1])
 			if executed_action not in self._get_avail_agent_actions(i, self.n_actions)[1]:
-				#print("This is not Avaible",i,executed_action,self.get_avail_agent_actions(i, self.n_actions)[1])
 				obs_prepare.append(self.obs_current_chache[i])
 				#obs_onehot_prepare[i]= self.obs_onehot[i]
-
 				self.wait_count[i] += 1
 
-			# if action_i is current start node -> stop
-			elif self.pos[int(action_i)][0] == self.obs[i][0] and self.pos[int(action_i)][1]==self.obs[i][1]:
+			# if executed_action is current start node -> stop
+			elif self.pos[int(executed_action)][0] == self.obs[i][0] and self.pos[int(executed_action)][1]==self.obs[i][1]:
 				obs_prepare.append(self.obs_current_chache[i])
 				self.wait_count[i] += 1
 
 			# if available ⇢ obs_prepare update by obs_i_
 			else:
 				# self.joint_action_old[i] = joint_action[i]
-				current_goal_prepare[i] = action_i # update 行き先ノード when avable action is taken
+				current_goal_prepare[i] = executed_action # update 行き先ノード when avable action is taken
 				obs_i = self.obs[i]
 		
 				# 現在位置から，次の経由ノードまでの距離を計算する．
-				current_goal = list(self.pos[int(action_i)])
+				current_goal = list(self.pos[int(executed_action)])
 				current_x1,current_y1 = obs_i[0], obs_i[1]
 				x = current_goal[0] - current_x1
 				y = current_goal[1] - current_y1
@@ -359,22 +354,22 @@ class DrpEnv(gym.Env):
 					"""dist_to_cstart_rateという名前だが，cstart上にいれば0に，cgoalに近づくにつれて1になる．"""
 					
 					obs_onehot_prepare[i] = np.zeros((1, len(list(self.G.nodes()))*2))
-					obs_onehot_prepare[i][int(action_i)] = dist_to_cstart_rate
+					obs_onehot_prepare[i][int(executed_action)] = dist_to_cstart_rate
 					obs_onehot_prepare[i][int(self.current_start[i])] = 1-dist_to_cstart_rate
 					obs_onehot_prepare[i][int(self.goal_array[i])+len(list(self.G.nodes()))] = 1 # current goal
 					self.distance_from_start[i] += self.speed
 
 				# ノードに到着
 				else:
-					obs_i_ = [round(self.pos[int(action_i)][0],2), round(self.pos[int(action_i)][1],2), obs_i[2], obs_i[3]]
+					obs_i_ = [round(self.pos[int(executed_action)][0],2), round(self.pos[int(executed_action)][1],2), obs_i[2], obs_i[3]]
 					
 					# for one-hot state
 					obs_onehot_prepare[i] = np.zeros((1, len(list(self.G.nodes()))*2))
-					obs_onehot_prepare[i][int(action_i)] = 1
+					obs_onehot_prepare[i][int(executed_action)] = 1
 					obs_onehot_prepare[i][int(self.goal_array[i])+len(list(self.G.nodes()))] = 1 #current goal
 					
 					# update current_start only when arrive at node
-					current_start_prepare[i] = int(action_i) #update 出発ノード when　行き先ノード　has been arrived
+					current_start_prepare[i] = int(executed_action) #update 出発ノード when　行き先ノード　has been arrived
 					current_goal_prepare[i] = None #update 行き先ノード when it has been arrived
 
 					self.distance_from_start[i] += dist_to_cgoal
