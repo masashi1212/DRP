@@ -45,6 +45,55 @@ for an, map_name in product(agent_num, map_list):
         },
     )
 
+delay_prob_list = [0.01, 0.05, 0.1, 0.3]
+max_delay_list = [1, 2, 3, 5]
+
+# 変動遅延：遅延ステップ数を 1~max_delay の範囲でランダムに決定
+for an, map_name, dp, md in product(agent_num, map_list, delay_prob_list, max_delay_list):
+    register(
+        id="drpDelay-{0}agent_{1}_dp{2}_md{3}-v1".format(an, map_name, dp, md),
+        entry_point="drp_env.drp_env:DrpEnv",
+        kwargs={
+            "agent_num": an,
+            "speed": speed,
+            "start_ori_array": start_ori_array,
+            "goal_array": goal_array,
+            "visu_delay": visu_delay,
+            "time_limit": time_limit,
+            "collision": collision,
+            "map_name": map_name,
+            "reward_list": reward_list,
+            "delay_prob": dp,
+            "max_delay": md,
+            "delay_fixed": False,
+            "delay_seed": None,
+        },
+    )
+
+# 固定遅延：遅延ステップ数を常に fixed_delay で固定
+fixed_delay_list = [1, 2, 3, 5]
+
+for an, map_name, dp, fd in product(agent_num, map_list, delay_prob_list, fixed_delay_list):
+    register(
+        id="drpDelayFixed-{0}agent_{1}_dp{2}_fd{3}-v1".format(an, map_name, dp, fd),
+        entry_point="drp_env.drp_env:DrpEnv",
+        kwargs={
+            "agent_num": an,
+            "speed": speed,
+            "start_ori_array": start_ori_array,
+            "goal_array": goal_array,
+            "visu_delay": visu_delay,
+            "time_limit": time_limit,
+            "collision": collision,
+            "map_name": map_name,
+            "reward_list": reward_list,
+            "delay_prob": dp,
+            "max_delay": fd,
+            "delay_fixed": True,
+            "delay_seed": None,
+        },
+    )
+
 neargridmap_list = [
     "map_3x3",
     "map_5x4",
