@@ -60,9 +60,6 @@ class DrpEnv(gym.Env):
 
 		self.time_limit = time_limit
 		"""1エピソードの最大ステップ数．"""
-		# test code begin
-		print(f"[masashi] DrpEnv.__init__(): self.time_limit = {self.time_limit}")
-		# test code end
 		if not 0.0 <= delay_prob <= 1.0:
 			raise ValueError("delay_prob must be between 0.0 and 1.0")
 		if max_delay < 1:
@@ -179,8 +176,6 @@ class DrpEnv(gym.Env):
 		現在の状態を返す．
 		"""
 
-		# 2026/6/30 07:00 何のために存在するのかよくわからないメソッドのため，ここに到達したらプログラムを止めるようにしました．
-		raise RuntimeError("DrpEnv.get_state()が呼ばれました．このメソッドは未使用と思われるため調査が必要です．")
 		return self.s
 
 	def _get_avail_agent_actions(self, agent_id, n_actions):
