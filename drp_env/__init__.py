@@ -9,6 +9,12 @@ goal_array = []
 visu_delay = 0.3
 reward_list = {"goal": 100, "collision": -10, "wait": -10, "move": -1}
 
+allow_delay = True
+delay_prob = 0.1
+max_delay = 3
+delay_fixed = True
+delay_seed = None
+
 time_limit = 100
 collision = "terminated"
 
@@ -23,6 +29,7 @@ map_list = [
     "map_aoba01",
 ]
 
+# 実行遅延なし
 for an, map_name in product(agent_num, map_list):
     """
     コマンド
@@ -45,13 +52,10 @@ for an, map_name in product(agent_num, map_list):
         },
     )
 
-delay_prob_list = [0.01, 0.05, 0.1, 0.3]
-max_delay_list = [1, 2, 3, 5]
-
-# 変動遅延：遅延ステップ数を 1~max_delay の範囲でランダムに決定
-for an, map_name, dp, md in product(agent_num, map_list, delay_prob_list, max_delay_list):
+# 実行遅延あり
+for an, map_name in product(agent_num, map_list):
     register(
-        id="drpDelay-{0}agent_{1}_dp{2}_md{3}-v1".format(an, map_name, dp, md),
+        id="drpDelay-{0}agent_{1}-v1".format(an, map_name),
         entry_point="drp_env.drp_env:DrpEnv",
         kwargs={
             "agent_num": an,
@@ -63,34 +67,11 @@ for an, map_name, dp, md in product(agent_num, map_list, delay_prob_list, max_de
             "collision": collision,
             "map_name": map_name,
             "reward_list": reward_list,
-            "delay_prob": dp,
-            "max_delay": md,
-            "delay_fixed": False,
-            "delay_seed": None,
-        },
-    )
-
-# 固定遅延：遅延ステップ数を常に fixed_delay で固定
-fixed_delay_list = [1, 2, 3, 5]
-
-for an, map_name, dp, fd in product(agent_num, map_list, delay_prob_list, fixed_delay_list):
-    register(
-        id="drpDelayFixed-{0}agent_{1}_dp{2}_fd{3}-v1".format(an, map_name, dp, fd),
-        entry_point="drp_env.drp_env:DrpEnv",
-        kwargs={
-            "agent_num": an,
-            "speed": speed,
-            "start_ori_array": start_ori_array,
-            "goal_array": goal_array,
-            "visu_delay": visu_delay,
-            "time_limit": time_limit,
-            "collision": collision,
-            "map_name": map_name,
-            "reward_list": reward_list,
-            "delay_prob": dp,
-            "max_delay": fd,
-            "delay_fixed": True,
-            "delay_seed": None,
+            "allow_delay": allow_delay,
+            "delay_prob": delay_prob,
+            "max_delay": max_delay,
+            "delay_fixed": delay_fixed,
+            "delay_seed": delay_seed,
         },
     )
 

@@ -8,6 +8,11 @@ from typing import Optional
 from drp_env.state_repre import REGISTRY
 from drp_env.EE_map import MapMake
 
+X_COORD_IDX = 0
+Y_COORD_IDX = 1
+START_NODE_IDX = 2
+GOAL_NODE_IDX = 3
+
 sys.path.append(os.path.join(os.path.dirname(__file__), ''))
 
 class DrpEnv(gym.Env):
@@ -23,11 +28,21 @@ class DrpEnv(gym.Env):
 			map_name="map_3x3",
 			reward_list={"goal": 100, "collision": -10, "wait": -10, "move": -1},
 			verbose=3,
+			allow_delay: bool = False,
 			delay_prob: float = 0.0,
-			max_delay: int = 5,
-			delay_fixed: bool = False,
+			max_delay: int = 0,
+			delay_fixed: Optional[bool] = None,
 			delay_seed: Optional[int] = None,
 		  ):
+		# 実行遅延なしの時に実行遅延に関する引数が渡された場合はブロックする．
+		if not allow_delay and (delay_prob != 0.0 or max_delay != 0 or delay_fixed != None or delay_seed != None):
+			raise ValueError(f"実行遅延なしの時に実行遅延に関する引数が渡されました: delay_prob: {type(delay_prob)} = {delay_prob}，max_delay: {type(max_delay)} = {max_delay}，delay_fixed: {type(delay_fixed)} = {delay_fixed}，delay_seed: {type(delay_seed)} = {delay_seed}．")
+		# 実行遅延ありの時に実行遅延に関する引数が渡されなかった場合はブロックする．
+		if allow_delay and (delay_prob == 0.0 or max_delay == 0 or delay_fixed == None):
+			raise ValueError(f"実行遅延ありの時に実行遅延に関する引数が渡されませんでした: delay_prob: {type(delay_prob)} = {delay_prob}，max_delay: {type(max_delay)} = {max_delay}，delay_fixed: {type(delay_fixed)} = {delay_fixed}，delay_seed: {type(delay_seed)} = {delay_seed}．")
+
+		print(f"[DELAY] delay_prob: {type(delay_prob)} = {delay_prob}，max_delay: {type(max_delay)} = {max_delay}，delay_fixed: {type(delay_fixed)} = {delay_fixed}，delay_seed: {type(delay_seed)} = {delay_seed}")
+
 		self.verbose = verbose
 		"""ログ出力レベル．0=全部出力，1=エピソード単位の出力，2=出力なし，3=衝突も出力なし"""
 		self.agent_num = agent_num
@@ -58,14 +73,15 @@ class DrpEnv(gym.Env):
 		self.collision = collision
 		"""衝突した時の扱いを表す設定．"""
 
+		# 遅延に関する処理
 		self.time_limit = time_limit
 		"""1エピソードの最大ステップ数．"""
-		if not 0.0 <= delay_prob <= 1.0:
+		if allow_delay and not 0.0 <= delay_prob <= 1.0:
 			raise ValueError("delay_prob must be between 0.0 and 1.0")
-		if max_delay < 1:
-			raise ValueError("max_delay must be greater than or equal to 1")
 		self.delay_prob = delay_prob
 		"""各ステップで遅延が発生する確率"""
+		if allow_delay and max_delay < 1:
+			raise ValueError("max_delay must be greater than or equal to 1")
 		self.max_delay = max_delay
 		"""遅延の最大ステップ数．self.delay_fixedがTrueの場合は常にこの値"""
 		self.delay_fixed = delay_fixed
@@ -218,7 +234,7 @@ class DrpEnv(gym.Env):
 		if self.verbose <= 1:
 			print("self.start_ori_array after", self.start_ori_array)
 
-		self.obs = tuple(np.array([self.pos[self.start_ori_array[i]][0], self.pos[self.start_ori_array[i]][1], self.start_ori_array[i], self.goal_array[i]]) for i in range(self.agent_num))
+		self.obs = tuple(np.array([self.pos[self.start_ori_array[i]][X_COORD_IDX], self.pos[self.start_ori_array[i]][Y_COORD_IDX], self.start_ori_array[i], self.goal_array[i]]) for i in range(self.agent_num))
 		self.obs_current_chache = copy.deepcopy(self.obs)# used for calculating reward
 		
 		self.obs_onehot = np.zeros((self.agent_num, self.n_nodes*2))
@@ -322,7 +338,7 @@ class DrpEnv(gym.Env):
 				self.wait_count[i] += 1
 
 			# if executed_action is current start node -> stop
-			elif self.pos[int(executed_action)][0] == self.obs[i][0] and self.pos[int(executed_action)][1]==self.obs[i][1]:
+			elif self.pos[int(executed_action)][X_COORD_IDX] == self.obs[i][X_COORD_IDX] and self.pos[int(executed_action)][Y_COORD_IDX]==self.obs[i][Y_COORD_IDX]:
 				obs_prepare.append(self.obs_current_chache[i])
 				self.wait_count[i] += 1
 
@@ -334,9 +350,9 @@ class DrpEnv(gym.Env):
 		
 				# 現在位置から，次の経由ノードまでの距離を計算する．
 				current_goal = list(self.pos[int(executed_action)])
-				current_x1,current_y1 = obs_i[0], obs_i[1]
-				x = current_goal[0] - current_x1
-				y = current_goal[1] - current_y1
+				current_x1,current_y1 = obs_i[X_COORD_IDX], obs_i[Y_COORD_IDX]
+				x = current_goal[X_COORD_IDX] - current_x1
+				y = current_goal[Y_COORD_IDX] - current_y1
 				dist_to_cgoal = np.sqrt(np.square(x) + np.square(y))
 				"""ターゲットノードまでの距離（the distance to current goal）"""
 
@@ -344,11 +360,11 @@ class DrpEnv(gym.Env):
 				if dist_to_cgoal>self.speed:
 					current_x1 = round(current_x1+(self.speed*x/dist_to_cgoal), 2)
 					current_y1 = round(current_y1+(self.speed*y/dist_to_cgoal), 2)
-					obs_i_ = [round(current_x1,2), round(current_y1,2), obs_i[2], obs_i[3]]
+					obs_i_ = [round(current_x1,2), round(current_y1,2), obs_i[START_NODE_IDX], obs_i[GOAL_NODE_IDX]]
 					
 					# for one-hot state
-					x = list(self.pos[self.current_start[i]])[0] - current_x1
-					y = list(self.pos[self.current_start[i]])[1] - current_y1
+					x = list(self.pos[self.current_start[i]])[X_COORD_IDX] - current_x1
+					y = list(self.pos[self.current_start[i]])[Y_COORD_IDX] - current_y1
 					dist_to_cstart = np.sqrt(np.square(x) + np.square(y))# the distance to current goal
 					dist_to_cstart_rate = round(dist_to_cstart/(dist_to_cstart+dist_to_cgoal), 2)
 					"""dist_to_cstart_rateという名前だが，cstart上にいれば0に，cgoalに近づくにつれて1になる．"""
@@ -361,8 +377,8 @@ class DrpEnv(gym.Env):
 
 				# ノードに到着
 				else:
-					obs_i_ = [round(self.pos[int(executed_action)][0],2), round(self.pos[int(executed_action)][1],2), obs_i[2], obs_i[3]]
-					
+					obs_i_ = [round(self.pos[int(executed_action)][X_COORD_IDX],2), round(self.pos[int(executed_action)][Y_COORD_IDX],2), obs_i[START_NODE_IDX], obs_i[GOAL_NODE_IDX]]
+
 					# for one-hot state
 					obs_onehot_prepare[i] = np.zeros((1, len(list(self.G.nodes()))*2))
 					obs_onehot_prepare[i][int(executed_action)] = 1
@@ -406,8 +422,8 @@ class DrpEnv(gym.Env):
 			obs = self.obs_manager.calc_obs()
 			ri_array = [collision_reward for _ in range(self.agent_num)]
 
-			info["delay"] = int(np.sum(self.delay_count)),
-			info["delay_steps"] = int(np.sum(self.delay_step_count)),
+			info["delay"] = int(np.sum(self.delay_count))
+			info["delay_steps"] = int(np.sum(self.delay_step_count))
 
 		# not happen
 		else: #non collision
@@ -432,8 +448,8 @@ class DrpEnv(gym.Env):
 				info["cost"] = self.episode_cost
 				info["goal_cost"] = self.episode_cost
 
-				info["delay"] = int(np.sum(self.delay_count)),
-				info["delay_steps"] = int(np.sum(self.delay_step_count)),
+				info["delay"] = int(np.sum(self.delay_count))
+				info["delay_steps"] = int(np.sum(self.delay_step_count))
 
 			obs = self.obs_manager.calc_obs()
 
@@ -457,8 +473,8 @@ class DrpEnv(gym.Env):
 		エージェントiの報酬を計算．
 		"""
 
-		pre_pos_agenti = [self.obs_current_chache[i][0],self.obs_current_chache[i][1]] # step()処理前の位置
-		pos_agenti = [self.obs[i][0],self.obs[i][1]] # step()処理後の位置
+		pre_pos_agenti = [self.obs_current_chache[i][X_COORD_IDX],self.obs_current_chache[i][Y_COORD_IDX]] # step()処理前の位置
+		pos_agenti = [self.obs[i][X_COORD_IDX],self.obs[i][Y_COORD_IDX]] # step()処理後の位置
 
 		if str(pos_agenti)==str(self.pos[self.goal_array[i]]): # at goal
 			if pre_pos_agenti!=pos_agenti : #first time to reach goal

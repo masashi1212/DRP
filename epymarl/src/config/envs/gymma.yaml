@@ -5,6 +5,11 @@ env_args:
   time_limit: 100
   state_repre_flag: "onehot"  # new
   pretrained_wrapper: null
+  allow_delay: False
+  delay_prob: 0.0
+  max_delay: 0
+  delay_fixed: null
+  delay_seed: null
 
 test_greedy: True
 test_nepisode: 100
