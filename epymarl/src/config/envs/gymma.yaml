@@ -5,6 +5,11 @@ env_args:
   time_limit: 100
   state_repre_flag: "onehot"  # new
   pretrained_wrapper: null
+  reward_list:
+    goal: 100
+    collision: -10
+    wait: -10
+    move: -1
   allow_delay: False
   delay_prob: 0.0
   max_delay: 0
