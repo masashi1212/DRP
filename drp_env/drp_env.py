@@ -41,6 +41,7 @@ class DrpEnv(gym.Env):
 		if allow_delay and (delay_prob == 0.0 or max_delay == 0 or delay_fixed == None):
 			raise ValueError(f"実行遅延ありの時に実行遅延に関する引数が渡されませんでした: delay_prob: {type(delay_prob)} = {delay_prob}，max_delay: {type(max_delay)} = {max_delay}，delay_fixed: {type(delay_fixed)} = {delay_fixed}，delay_seed: {type(delay_seed)} = {delay_seed}．")
 
+		print(f"[DELAY] agent_num: {agent_num}, collision: {collision}, map_name: {map_name}, reward_list: {reward_list}, time_limit: {time_limit}")
 		print(f"[DELAY] delay_prob: {type(delay_prob)} = {delay_prob}，max_delay: {type(max_delay)} = {max_delay}，delay_fixed: {type(delay_fixed)} = {delay_fixed}，delay_seed: {type(delay_seed)} = {delay_seed}")
 
 		self.verbose = verbose
@@ -62,6 +63,8 @@ class DrpEnv(gym.Env):
 		"""各エージェントの開始時点のノードの配列"""
 		self.goal_array = goal_array
 		"""各エージェントのゴールノードの配列"""
+		self.time_limit = time_limit
+		"""1エピソードの最大ステップ数．"""
 
 		# reward
 		self.r_goal = reward_list["goal"]
@@ -74,8 +77,8 @@ class DrpEnv(gym.Env):
 		"""衝突した時の扱いを表す設定．"""
 
 		# 遅延に関する処理
-		self.time_limit = time_limit
-		"""1エピソードの最大ステップ数．"""
+		self.allow_delay = allow_delay
+		"""実行遅延の有無"""
 		if allow_delay and not 0.0 <= delay_prob <= 1.0:
 			raise ValueError("delay_prob must be between 0.0 and 1.0")
 		self.delay_prob = delay_prob
@@ -88,7 +91,11 @@ class DrpEnv(gym.Env):
 		"""Trueの場合は遅延ステップ数を固定し，Falseの場合は遅延ステップ数を変動させる"""
 		self.delay_seed = delay_seed
 		"""遅延の乱数生成器のシード値"""
-		self.delay_rng = None
+		self.delay_rng = (
+			np.random.default_rng(self.delay_seed)
+			if self.allow_delay
+			else None
+		)
 		"""遅延の発生・遅延ステップ数のサンプリングに使う乱数生成器"""
 		self.delay_remaining = np.zeros(self.agent_num, dtype=int)
 		"""全エージェントの残っている遅延ステップ数"""
@@ -100,6 +107,8 @@ class DrpEnv(gym.Env):
 		"""遅延考慮前の全エージェントのターゲットノード"""
 		self.executed_actions = None
 		"""遅延考慮後の全エージェントのターゲットノード"""
+		self.is_delays = [False for _ in range(self.agent_num)]
+		"""各エージェントが遅延中かどうかを表すフラグ"""
 
 		self.colli_distan_value = 0.1 # ?
 		self.r_flag = 0 # ?
@@ -125,15 +134,13 @@ class DrpEnv(gym.Env):
 		self.goal_array = self.ee_env.goal_array
 		self.G = self.ee_env.G
 		"""
-		地図を表すnotworkxのグラフ．
-		ノードとエッジのつながりを持っている．
+		地図を表すnotworkxのグラフ．ノードとエッジのつながりを持っている．
 		"""
 		self.edge_labels = self.ee_env.edge_labels # unused
 
 		self.current_goal  = [ None for i in range(self.agent_num)]
 		"""
-		各エージェントが今向かっている途中のノードを記録する配列．
-		これは，そのエピソードの最終目標ではなく，現在移動中の一時的な行き先ノードであることに注意．
+		各エージェントが今向かっている途中のノードを記録する配列．そのエピソードの最終目標ではなく，現在移動中の一時的な行き先ノードであることに注意．
 		"""
 
 		self.obs_manager = REGISTRY[self.state_repre_flag](self)
@@ -252,7 +259,6 @@ class DrpEnv(gym.Env):
 		self.delay_remaining = np.zeros(self.agent_num, dtype=int)
 		self.delay_count = np.zeros(self.agent_num, dtype=int)
 		self.delay_step_count = np.zeros(self.agent_num, dtype=int)
-		self.delay_rng = np.random.default_rng(self.delay_seed)
 		self.planned_actions = None
 		self.executed_actions = None
 
@@ -279,16 +285,26 @@ class DrpEnv(gym.Env):
 			return int(nonzero_nodes[0])
 		return None
 
-	def _apply_execution_delay(self, planned_action):
+	def _apply_execution_delay(self, planned_actions):
 		"""
 		plannerが選んだ行動から，実行遅延を反映した行動を作る．
 		"""
 
-		executed_action = list(planned_action)
+		executed_actions = list(planned_actions)
 		is_delays = [False for _ in range(self.agent_num)]
 
+		# 非実行遅延環境の場合
+		if not self.allow_delay:
+			return executed_actions, is_delays
+	
+		# 実行遅延環境の場合
 		for i in range(self.agent_num):
 			current_node = self._get_current_node_if_on_node(i)
+
+			# すでにゴールした場合は遅延しない
+			if self.terminated[i]:
+				executed_actions[i] = current_node
+				continue
 
 			if self.delay_remaining[i] <= 0 and current_node is not None:
 				# 実行遅延が発生するかを判定する．
@@ -303,11 +319,11 @@ class DrpEnv(gym.Env):
 
 			if self.delay_remaining[i] > 0:
 				is_delays[i] = True
-				executed_action[i] = current_node
+				executed_actions[i] = current_node
 				self.delay_remaining[i] -= 1
 				self.delay_step_count[i] += 1
 
-		return executed_action, is_delays
+		return executed_actions, is_delays
 		
 
 	def step(self, joint_action):
@@ -319,7 +335,7 @@ class DrpEnv(gym.Env):
 		self.step_account += 1
 		self.obs_current_chache = copy.deepcopy(self.obs)
 		self.planned_actions = [int(action) for action in joint_action]
-		self.executed_actions, _ = self._apply_execution_delay(self.planned_actions)
+		self.executed_actions, self.is_delays = self._apply_execution_delay(self.planned_actions)
 
 		obs_prepare = []
 		obs_onehot_prepare = copy.deepcopy(self.obs_onehot)
@@ -395,6 +411,8 @@ class DrpEnv(gym.Env):
 		# 2) !!!obs_prepare & obs_onehot_prepare!!! を持って、
 		# second judge whether to !!! obs & obs_onehot !!! according to collision happen
 		collision_flag = self.ee_env.collision_detect(obs_prepare)
+
+		# TensorBoardのグラフに表示する「数値情報」をまとめるための辞書を作成する（値はスカラー）．
 		info = {
 			"goal": False,
 			"collision": False,
@@ -404,29 +422,35 @@ class DrpEnv(gym.Env):
 			"wait": int(np.sum(self.wait_count)),
 			"cost": 0,
 			"goal_cost": None,
-			"planned_action": list(self.planned_actions),
-			"executed_action": list(self.executed_actions),
 			"delay": int(np.sum(self.delay_count)),
+			"delay_per_agent": int(np.sum(self.delay_count)) / self.agent_num,
 			"delay_steps": int(np.sum(self.delay_step_count)),
+			"delay_steps_per_agent": int(np.sum(self.delay_step_count)) / self.agent_num,
 		}
+
 		# happen
-		if collision_flag==1:#collision
+		if collision_flag == 1: # collision
 			collision_reward = self.r_coll*self.speed
 			if self.collision == "bounceback":
 				self.terminated = [False for _ in range(self.agent_num)]
 			else: # default -> self.collision == "terminated"
 				self.terminated = [True for _ in range(self.agent_num)]
 			info["collision"] = True
+
 			self.episode_cost = self.agent_num * self.time_limit
 			info["cost"] = self.episode_cost
+			
 			obs = self.obs_manager.calc_obs()
+
 			ri_array = [collision_reward for _ in range(self.agent_num)]
 
 			info["delay"] = int(np.sum(self.delay_count))
+			info["delay_per_agent"] = int(np.sum(self.delay_count)) / self.agent_num
 			info["delay_steps"] = int(np.sum(self.delay_step_count))
+			info["delay_steps_per_agent"] = int(np.sum(self.delay_step_count)) / self.agent_num
 
 		# not happen
-		else: #non collision
+		else: # non collision
 			self.obs = tuple([np.array(i) for i in obs_prepare])
 			self.obs_onehot = copy.deepcopy(obs_onehot_prepare)
 			self.current_start = copy.deepcopy(current_start_prepare)
@@ -473,24 +497,35 @@ class DrpEnv(gym.Env):
 		エージェントiの報酬を計算．
 		"""
 
-		pre_pos_agenti = [self.obs_current_chache[i][X_COORD_IDX],self.obs_current_chache[i][Y_COORD_IDX]] # step()処理前の位置
-		pos_agenti = [self.obs[i][X_COORD_IDX],self.obs[i][Y_COORD_IDX]] # step()処理後の位置
+		pre_pos_agenti = [
+			self.obs_current_chache[i][X_COORD_IDX],
+			self.obs_current_chache[i][Y_COORD_IDX],
+		] # step()処理前の位置
+		pos_agenti = [
+			self.obs[i][X_COORD_IDX],
+			self.obs[i][Y_COORD_IDX],
+		] # step()処理後の位置
 
-		if str(pos_agenti)==str(self.pos[self.goal_array[i]]): # at goal
-			if pre_pos_agenti!=pos_agenti : #first time to reach goal
+		if str(pos_agenti) == str(self.pos[self.goal_array[i]]): # ゴールノードにいる時
+			if pre_pos_agenti != pos_agenti: # このステップで初めてゴールノードに到着した時
 				r_i = self.r_goal
 				self.reach_account += 1
 				self.terminated[i] = True
 				self._record_agent_arrival(i)
-			else: # stop at goal
+			else: # 1ステップ前からすでにゴールノード上にいる時
 				r_i = 0   
 				# self.distance_from_start[i] -= self.speed
 		
-		else: #at a general node 
-			if pre_pos_agenti==pos_agenti: # stop at a general node 
-				r_i = self.r_wait*self.speed
-			else: # just move 
-				r_i = self.r_move*self.speed
+		else: # ゴールノード以外のノードにいる時
+			if pos_agenti == pre_pos_agenti: # 1ステップ前から移動していない時
+				if self.is_delays[i]: # 遅延中
+					r_i = self.r_move * self.speed
+
+				else: # 非遅延中
+					r_i = self.r_wait * self.speed
+			
+			else: # 1ステップ前から移動した時
+				r_i = self.r_move * self.speed
 			
 		return r_i
 
