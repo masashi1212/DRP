@@ -8,6 +8,9 @@ from typing import Optional
 from drp_env.state_repre import REGISTRY
 from drp_env.EE_map import MapMake
 
+from drp_env.delay_config import DelayConfig
+from drp_env.delay_generator import DelayGenerator
+
 X_COORD_IDX = 0
 Y_COORD_IDX = 1
 START_NODE_IDX = 2
@@ -29,21 +32,15 @@ class DrpEnv(gym.Env):
 			reward_list={"goal": 100, "collision": -10, "wait": -10, "move": -1},
 			verbose=3,
 			allow_delay: bool = False,
-			delay_prob: float = 0.0,
-			max_delay: int = 0,
-			delay_fixed: Optional[bool] = None,
+			event_model: Optional[str] = None,
+			p_delay: Optional[float] = None,
+			duration_model: Optional[str] = None,
+			min_delay: Optional[int] = None,
+			max_delay: Optional[int] = None,
 			delay_seed: Optional[int] = None,
+			gauss_mean_ratio: Optional[float] = None,
+			gauss_std_ratio: Optional[float] = None,
 		  ):
-		# 実行遅延なしの時に実行遅延に関する引数が渡された場合はブロックする．
-		if not allow_delay and (delay_prob != 0.0 or max_delay != 0 or delay_fixed != None or delay_seed != None):
-			raise ValueError(f"実行遅延なしの時に実行遅延に関する引数が渡されました: delay_prob: {type(delay_prob)} = {delay_prob}，max_delay: {type(max_delay)} = {max_delay}，delay_fixed: {type(delay_fixed)} = {delay_fixed}，delay_seed: {type(delay_seed)} = {delay_seed}．")
-		# 実行遅延ありの時に実行遅延に関する引数が渡されなかった場合はブロックする．
-		if allow_delay and (delay_prob == 0.0 or max_delay == 0 or delay_fixed == None):
-			raise ValueError(f"実行遅延ありの時に実行遅延に関する引数が渡されませんでした: delay_prob: {type(delay_prob)} = {delay_prob}，max_delay: {type(max_delay)} = {max_delay}，delay_fixed: {type(delay_fixed)} = {delay_fixed}，delay_seed: {type(delay_seed)} = {delay_seed}．")
-
-		print(f"[DELAY] agent_num: {agent_num}, collision: {collision}, map_name: {map_name}, reward_list: {reward_list}, time_limit: {time_limit}")
-		print(f"[DELAY] delay_prob: {type(delay_prob)} = {delay_prob}，max_delay: {type(max_delay)} = {max_delay}，delay_fixed: {type(delay_fixed)} = {delay_fixed}，delay_seed: {type(delay_seed)} = {delay_seed}")
-
 		self.verbose = verbose
 		"""ログ出力レベル．0=全部出力，1=エピソード単位の出力，2=出力なし，3=衝突も出力なし"""
 		self.agent_num = agent_num
@@ -79,36 +76,87 @@ class DrpEnv(gym.Env):
 		# 遅延に関する処理
 		self.allow_delay = allow_delay
 		"""実行遅延の有無"""
-		if allow_delay and not 0.0 <= delay_prob <= 1.0:
-			raise ValueError("delay_prob must be between 0.0 and 1.0")
-		self.delay_prob = delay_prob
-		"""各ステップで遅延が発生する確率"""
-		if allow_delay and max_delay < 1:
-			raise ValueError("max_delay must be greater than or equal to 1")
-		self.max_delay = max_delay
-		"""遅延の最大ステップ数．self.delay_fixedがTrueの場合は常にこの値"""
-		self.delay_fixed = delay_fixed
-		"""Trueの場合は遅延ステップ数を固定し，Falseの場合は遅延ステップ数を変動させる"""
-		self.delay_seed = delay_seed
-		"""遅延の乱数生成器のシード値"""
-		self.delay_rng = (
-			np.random.default_rng(self.delay_seed)
-			if self.allow_delay
-			else None
-		)
-		"""遅延の発生・遅延ステップ数のサンプリングに使う乱数生成器"""
+		self.delay_config = None
+		"""実行遅延の設定"""
+		self.delay_generator = None
+		"""実行遅延の発生対象と継続時間を生成するオブジェクト"""
+		all_delay_values = {
+			"event_model": event_model,
+			"p_delay": p_delay,
+			"duration_model": duration_model,
+			"min_delay": min_delay,
+			"max_delay": max_delay,
+			"delay_seed": delay_seed,
+			"gauss_mean_ratio": gauss_mean_ratio,
+			"gauss_std_ratio": gauss_std_ratio,
+		}
+		required_delay_values = {
+			"event_model": event_model,
+			"p_delay": p_delay,
+			"duration_model": duration_model,
+			"min_delay": min_delay,
+			"max_delay": max_delay,
+		}
+
+		if not self.allow_delay: # 非遅延環境の場合，遅延に関する変数に値がないことを確認
+			specified_values = {
+				name: value
+				for name, value in all_delay_values.items()
+				if value is not None
+			}
+
+			if specified_values:
+				raise ValueError(
+					"allow_delay=Falseですが、遅延設定が指定されています: "
+					f"{specified_values}"
+				)
+
+		else: # 遅延環境の場合
+			# 遅延に関する必須変数に値があることを確認する
+			missing_values = [
+				name
+				for name, value in required_delay_values.items()
+				if value is None
+			]
+
+			if missing_values:
+				raise ValueError(
+					"allow_delay=Trueですが、必要な遅延設定が不足しています: "
+					f"{missing_values}"
+				)
+
+			# Config を生成する
+			self.delay_config = DelayConfig(
+				event_model=event_model,
+				p_delay=p_delay,
+				duration_model=duration_model,
+				min_delay=min_delay,
+				max_delay=max_delay,
+				seed=delay_seed,
+				gauss_mean_ratio=gauss_mean_ratio,
+				gauss_std_ratio=gauss_std_ratio,
+			)
+
+			# 遅延生成器を生成する
+			self.delay_generator = DelayGenerator(
+				config=self.delay_config,
+				agent_num=self.agent_num,
+			)
+
+		print(f"[DELAY] allow_delay: {self.allow_delay}, delay_config: {self.delay_config}")
+
 		self.delay_remaining = np.zeros(self.agent_num, dtype=int)
-		"""全エージェントの残っている遅延ステップ数"""
+		"""各エージェントの残り遅延ステップ数"""
 		self.delay_count = np.zeros(self.agent_num, dtype=int)
-		"""全エージェントが1エピソード内で遅延を発生させた回数"""
+		"""各エージェントの1エピソード内の遅延発生回数"""
 		self.delay_step_count = np.zeros(self.agent_num, dtype=int)
-		"""全エージェントが1エピソード中に遅延によって停止したステップ数"""
+		"""各エージェントが遅延によって停止したステップ数"""
 		self.planned_actions = None
-		"""遅延考慮前の全エージェントのターゲットノード"""
+		"""遅延を適用する前に方策が選んだ行動"""
 		self.executed_actions = None
-		"""遅延考慮後の全エージェントのターゲットノード"""
+		"""遅延を適用した後に実際に実行される行動"""
 		self.is_delays = [False for _ in range(self.agent_num)]
-		"""各エージェントが遅延中かどうかを表すフラグ"""
+		"""各エージェントが現在のステップで遅延しているか"""
 
 		self.colli_distan_value = 0.1 # ?
 		self.r_flag = 0 # ?
@@ -256,9 +304,11 @@ class DrpEnv(gym.Env):
 
 		self.distance_from_start = np.zeros(self.agent_num) # info
 		self.wait_count = np.zeros(self.agent_num) # info
-		self.delay_remaining = np.zeros(self.agent_num, dtype=int)
-		self.delay_count = np.zeros(self.agent_num, dtype=int)
-		self.delay_step_count = np.zeros(self.agent_num, dtype=int)
+
+		self.delay_remaining.fill(0)
+		self.delay_count.fill(0)
+		self.delay_step_count.fill(0)
+		self.is_delays = [False for _ in range(self.agent_num)]
 		self.planned_actions = None
 		self.executed_actions = None
 
@@ -287,41 +337,72 @@ class DrpEnv(gym.Env):
 
 	def _apply_execution_delay(self, planned_actions):
 		"""
-		plannerが選んだ行動から，実行遅延を反映した行動を作る．
+		方策が選択した行動に実行遅延を反映する。
+
+		新しい遅延は、以下をすべて満たすエージェントにだけ発生する。
+
+		・ゴールしていない
+		・ノード上にいる
+		・現在遅延中ではない
+
+		エッジ上のエージェントには新しい遅延を発生させない。
 		"""
 
 		executed_actions = list(planned_actions)
 		is_delays = [False for _ in range(self.agent_num)]
 
-		# 非実行遅延環境の場合
-		if not self.allow_delay:
+		# 実行遅延なし
+		if self.delay_generator is None:
 			return executed_actions, is_delays
-	
-		# 実行遅延環境の場合
-		for i in range(self.agent_num):
-			current_node = self._get_current_node_if_on_node(i)
 
-			# すでにゴールした場合は遅延しない
+		# 各エージェントが現在ノード上にいるかを一度だけ判定する。
+		current_nodes = [self._get_current_node_if_on_node(i) for i in range(self.agent_num)]
+
+		# 新規遅延の抽選対象を集める。
+		candidate_ids = [
+			i
+			for i in range(self.agent_num)
+			if (
+				not self.terminated[i]
+				and self.delay_remaining[i] <= 0
+				and current_nodes[i] is not None
+			)
+		]
+
+		# 1ステップにつき1回だけ呼び出す。
+		# 戻り値の例: {0: 2, 3: 1}
+		new_delays = self.delay_generator.sample_new_delays(candidate_ids)
+
+		# 新しく発生した遅延を登録する。
+		for agent_id, duration in new_delays.items():
+			self.delay_remaining[agent_id] = duration
+			self.delay_count[agent_id] += 1
+
+		# 現在遅延中のエージェントを停止させる。
+		for i in range(self.agent_num):
+			current_node = current_nodes[i]
+
+			# ゴール済みのエージェントには遅延を適用しない。
 			if self.terminated[i]:
-				executed_actions[i] = current_node
+				if current_node is not None:
+					executed_actions[i] = current_node
 				continue
 
-			if self.delay_remaining[i] <= 0 and current_node is not None:
-				# 実行遅延が発生するかを判定する．
-				# 発生する場合
-				if self.delay_rng.random() < self.delay_prob:
-					if self.delay_fixed:
-						self.delay_remaining[i] = self.max_delay
-					else:
-						self.delay_remaining[i] = int(self.delay_rng.integers(1, self.max_delay + 1))
+			if self.delay_remaining[i] <= 0:
+				continue
 
-					self.delay_count[i] += 1
+			# 遅延はノード上でのみ発生するため、遅延中にエッジ上になることは本来ない。
+			if current_node is None:
+				raise RuntimeError(f"エッジ上のエージェントが遅延中になっています: agent_id={i}, delay_remaining={self.delay_remaining[i]}")
 
-			if self.delay_remaining[i] > 0:
-				is_delays[i] = True
-				executed_actions[i] = current_node
-				self.delay_remaining[i] -= 1
-				self.delay_step_count[i] += 1
+			is_delays[i] = True
+
+			# 現在ノードを選択することで、そのノード上で停止する。
+			executed_actions[i] = current_node
+
+			# 今回のステップ分の遅延を消費する。
+			self.delay_remaining[i] -= 1
+			self.delay_step_count[i] += 1
 
 		return executed_actions, is_delays
 		
@@ -329,6 +410,10 @@ class DrpEnv(gym.Env):
 	def step(self, joint_action):
 		"""
 		エージェントの行動を受け取り，1ステップ進行．
+
+		- 各エージェントの行動が有効か無効かを判定 -> 次観測の作成
+
+		- エージェントの衝突の有無を判定 -> 報酬とコストの計算
 		"""
 
 		#transite env based on joint_action
@@ -353,8 +438,11 @@ class DrpEnv(gym.Env):
 				#obs_onehot_prepare[i]= self.obs_onehot[i]
 				self.wait_count[i] += 1
 
-			# if executed_action is current start node -> stop
-			elif self.pos[int(executed_action)][X_COORD_IDX] == self.obs[i][X_COORD_IDX] and self.pos[int(executed_action)][Y_COORD_IDX]==self.obs[i][Y_COORD_IDX]:
+			# （遅延の有無に関係なく）エージェントの行動が現在ノードの場合 -> 停止
+			elif (
+				self.pos[int(executed_action)][X_COORD_IDX] == self.obs[i][X_COORD_IDX] and 
+				self.pos[int(executed_action)][Y_COORD_IDX] == self.obs[i][Y_COORD_IDX]
+			):
 				obs_prepare.append(self.obs_current_chache[i])
 				self.wait_count[i] += 1
 
@@ -428,8 +516,8 @@ class DrpEnv(gym.Env):
 			"delay_steps_per_agent": int(np.sum(self.delay_step_count)) / self.agent_num,
 		}
 
-		# happen
-		if collision_flag == 1: # collision
+		# 報酬とコストの計算
+		if collision_flag == 1:
 			collision_reward = self.r_coll*self.speed
 			if self.collision == "bounceback":
 				self.terminated = [False for _ in range(self.agent_num)]
@@ -449,8 +537,7 @@ class DrpEnv(gym.Env):
 			info["delay_steps"] = int(np.sum(self.delay_step_count))
 			info["delay_steps_per_agent"] = int(np.sum(self.delay_step_count)) / self.agent_num
 
-		# not happen
-		else: # non collision
+		else:
 			self.obs = tuple([np.array(i) for i in obs_prepare])
 			self.obs_onehot = copy.deepcopy(obs_onehot_prepare)
 			self.current_start = copy.deepcopy(current_start_prepare)
@@ -518,12 +605,15 @@ class DrpEnv(gym.Env):
 		
 		else: # ゴールノード以外のノードにいる時
 			if pos_agenti == pre_pos_agenti: # 1ステップ前から移動していない時
-				if self.is_delays[i]: # 遅延中
+				# 遅延により移動が妨げられたか
+				delay_blocked_move = self.is_delays[i] and self.planned_actions[i] != self.executed_actions[i]
+
+				if delay_blocked_move: # 遅延によって本来の移動行動が妨げられた
 					r_i = self.r_move * self.speed
 
-				else: # 非遅延中
+				else: # 自発的な待機，または遅延と無関係に動けなかった
 					r_i = self.r_wait * self.speed
-			
+
 			else: # 1ステップ前から移動した時
 				r_i = self.r_move * self.speed
 			
