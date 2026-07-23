@@ -11,10 +11,14 @@ env_args:
     wait: -10
     move: -1
   allow_delay: False
-  delay_prob: 0.0
-  max_delay: 0
-  delay_fixed: null
+  event_model: null
+  p_delay: null
+  duration_model: null
+  min_delay: null
+  max_delay: null
   delay_seed: null
+  gauss_mean_ratio: null
+  gauss_std_ratio: null
 
 test_greedy: True
 test_nepisode: 100

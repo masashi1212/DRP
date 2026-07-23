@@ -10,10 +10,14 @@ visu_delay = 0.3
 reward_list = {"goal": 100, "collision": -10, "wait": -10, "move": -1}
 
 allow_delay = True
-delay_prob = 0.1
-max_delay = 3
-delay_fixed = True
+event_model = None
+p_delay = 0.0
+duration_model = None
+min_delay = 0
+max_delay = 0
 delay_seed = None
+gauss_mean_ratio = None
+gauss_std_ratio = None
 
 time_limit = 100
 collision = "terminated"
@@ -68,10 +72,14 @@ for an, map_name in product(agent_num, map_list):
             "map_name": map_name,
             "reward_list": reward_list,
             "allow_delay": allow_delay,
-            "delay_prob": delay_prob,
+            "event_model": event_model,
+            "p_delay": p_delay,
+            "duration_model": duration_model,
+            "min_delay": min_delay,
             "max_delay": max_delay,
-            "delay_fixed": delay_fixed,
             "delay_seed": delay_seed,
+            "gauss_mean_ratio": gauss_mean_ratio,
+            "gauss_std_ratio": gauss_std_ratio,
         },
     )
 
