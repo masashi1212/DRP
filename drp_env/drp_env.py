@@ -10,6 +10,7 @@ from drp_env.EE_map import MapMake
 
 from drp_env.delay_config import DelayConfig
 from drp_env.delay_generator import DelayGenerator
+from drp_env.render_recorder import RenderRecorder
 
 X_COORD_IDX = 0
 Y_COORD_IDX = 1
@@ -223,7 +224,11 @@ class DrpEnv(gym.Env):
 		"""そのエピソードでゴールノードに到達したエージェント数"""
 		self.step_account = 0
 		"""そのエピソードの現在のステップ数"""
-		
+		self._render_recorder = None
+		"""render()の初回呼び出し時に生成される、画像保存用のオブジェクト"""
+		self._episode_had_collision = False
+		"""そのエピソード中に衝突が発生したか(画像を残すかどうかの判定に使う)"""
+
 	def _record_agent_arrival(self, agent_id):
 		if self.agent_arrival_steps[agent_id] < 0:
 			self.agent_arrival_steps[agent_id] = self.step_account
@@ -318,9 +323,15 @@ class DrpEnv(gym.Env):
 		self.planned_actions = None
 		self.executed_actions = None
 
+		if self._render_recorder is not None:
+			self._render_recorder.end_episode(should_save=self._episode_had_collision)
+		self._episode_had_collision = False
+
 		self.reach_account = 0
 		self.step_account = 0
 		self.episode_account += 1
+		if self._render_recorder is not None:
+			self._render_recorder.begin_episode(self.episode_account)
 		self.agent_arrival_steps = np.full(self.agent_num, -1, dtype=int)
 		self.episode_cost = 0
 		if self.verbose <= 1:
@@ -530,6 +541,7 @@ class DrpEnv(gym.Env):
 			else: # default -> self.collision == "terminated"
 				self.terminated = [True for _ in range(self.agent_num)]
 			info["collision"] = True
+			self._episode_had_collision = True
 
 			self.episode_cost = self.agent_num * self.time_limit
 			info["cost"] = self.episode_cost
@@ -639,6 +651,11 @@ class DrpEnv(gym.Env):
 		現在の環境を描画．
 		"""
 
+		if self._render_recorder is None:
+			self._render_recorder = RenderRecorder()
+			self._render_recorder.begin_episode(self.episode_account)
+		save_path = self._render_recorder.frame_path(self.step_account)
+
 		self.ee_env.plot_map_dynamic(
 			self.visu_delay,self.obs_current_chache,
 			self.obs,self.goal_array,
@@ -646,13 +663,17 @@ class DrpEnv(gym.Env):
 			self.current_goal,
 			self.reach_account,
 			self.step_account,
-			self.episode_account
+			self.episode_account,
+			save_path=save_path,
 		) # a must be a angle !!!list!!!
 
 	def close(self):
 		"""
 		環境を閉じる．
 		"""
+
+		if self._render_recorder is not None:
+			self._render_recorder.end_episode(should_save=self._episode_had_collision)
 
 		if self.verbose <= 1:
 			print('Environment CLOSE')

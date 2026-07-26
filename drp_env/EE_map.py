@@ -180,7 +180,7 @@ class MapMake():
 		nx.draw_networkx(self.G, with_labels = True,pos=self.pos,alpha=0.2, node_size=170, node_color='lightblue')
       
 
-	def plot_map_dynamic(self, delay ,obs_old, obs, goal_array, agent_num, joint_action_old, reach_account, step, episode):# a must be a angle !!!list!!!
+	def plot_map_dynamic(self, delay ,obs_old, obs, goal_array, agent_num, joint_action_old, reach_account, step, episode, save_path=None):# a must be a angle !!!list!!!
 		"""
 		エージェントの現在位置や目標位置などを地図上に描画
 		"""
@@ -243,6 +243,8 @@ class MapMake():
 		plt.grid() #グリッド
 		#xtick=np.arange(-1,12, 1)
 		#plt.xticks(xtick)
+		if save_path is not None:
+			self.fig1.savefig(save_path)
 		plt.pause(delay)  #do not need 'plt.show()' to show
 		plt.cla() #clear axis not plt
 
