@@ -16,6 +16,13 @@ Y_COORD_IDX = 1
 START_NODE_IDX = 2
 GOAL_NODE_IDX = 3
 
+DELAY_REWARD = None
+"""
+遅延中のエージェントに与える報酬の設定値．
+- None: 従来通り，遅延によって停止させられた行動がmoveかwaitかに応じてr_move/r_waitを使う．
+- 数値: 遅延中(is_delaysがTrue)は，move/waitを区別せずいかなる場合も常にこの値(*speed)を報酬として使う．
+"""
+
 sys.path.append(os.path.join(os.path.dirname(__file__), ''))
 
 class DrpEnv(gym.Env):
@@ -440,8 +447,8 @@ class DrpEnv(gym.Env):
 
 			# （遅延の有無に関係なく）エージェントの行動が現在ノードの場合 -> 停止
 			elif (
-				self.pos[int(executed_action)][X_COORD_IDX] == self.obs[i][X_COORD_IDX] and 
-				self.pos[int(executed_action)][Y_COORD_IDX] == self.obs[i][Y_COORD_IDX]
+				self.pos[int(executed_action)][X_COORD_IDX] == self.obs[i][X_COORD_IDX]
+				and self.pos[int(executed_action)][Y_COORD_IDX] == self.obs[i][Y_COORD_IDX]
 			):
 				obs_prepare.append(self.obs_current_chache[i])
 				self.wait_count[i] += 1
@@ -546,7 +553,7 @@ class DrpEnv(gym.Env):
 			team_reward = 0
 			ri_array = []
 			for i in range(self.agent_num):
-				ri = self.reward(i)
+				ri = self._reward(i)
 				team_reward += ri
 				ri_array.append(ri)
 
@@ -578,11 +585,17 @@ class DrpEnv(gym.Env):
 
 		return obs, ri_array, self.terminated, info
 
-
-	def reward(self, i):
+	def _reward(self, i):
 		"""
 		エージェントiの報酬を計算．
 		"""
+
+		# 遅延中は，DELAY_REWARDが数値ならmove/wait区別なくその値を使う（Noneなら従来通りの判定に進む）
+		if (
+			self.is_delays[i]
+			and DELAY_REWARD is not None
+		):
+			return DELAY_REWARD * self.speed
 
 		pre_pos_agenti = [
 			self.obs_current_chache[i][X_COORD_IDX],
@@ -606,11 +619,13 @@ class DrpEnv(gym.Env):
 		else: # ゴールノード以外のノードにいる時
 			if pos_agenti == pre_pos_agenti: # 1ステップ前から移動していない時
 				# 遅延により移動が妨げられたか
-				delay_blocked_move = self.is_delays[i] and self.planned_actions[i] != self.executed_actions[i]
+				delay_blocked_move = (
+					self.is_delays[i]
+					and self.planned_actions[i] != self.executed_actions[i]
+				)
 
 				if delay_blocked_move: # 遅延によって本来の移動行動が妨げられた
 					r_i = self.r_move * self.speed
-
 				else: # 自発的な待機，または遅延と無関係に動けなかった
 					r_i = self.r_wait * self.speed
 
