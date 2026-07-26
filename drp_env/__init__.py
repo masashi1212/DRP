@@ -7,7 +7,7 @@ speed = 5
 start_ori_array = []
 goal_array = []
 visu_delay = 0.3
-reward_list = {"goal": 100, "collision": -10, "wait": -10, "move": -1}
+reward_list = {"goal": 100, "collision": -10, "wait": -10, "move": -1, "delay": None}
 
 allow_delay = True
 event_model = None
@@ -145,7 +145,7 @@ speed = 5
 start_ori_array = []
 goal_array = []
 visu_delay = 0.3
-reward_list = {"goal": 100, "collision": -10, "wait": -10, "move": -1}
+reward_list = {"goal": 100, "collision": -10, "wait": -10, "move": -1, "delay": None}
 
 time_limit = 100
 collision = "terminated"

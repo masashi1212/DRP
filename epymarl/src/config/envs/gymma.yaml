@@ -10,6 +10,7 @@ env_args:
     collision: -10
     wait: -10
     move: -1
+    delay: null
   allow_delay: False
   event_model: null
   p_delay: null

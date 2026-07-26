@@ -16,13 +16,6 @@ Y_COORD_IDX = 1
 START_NODE_IDX = 2
 GOAL_NODE_IDX = 3
 
-DELAY_REWARD = None
-"""
-遅延中のエージェントに与える報酬の設定値．
-- None: 従来通り，遅延によって停止させられた行動がmoveかwaitかに応じてr_move/r_waitを使う．
-- 数値: 遅延中(is_delaysがTrue)は，move/waitを区別せずいかなる場合も常にこの値(*speed)を報酬として使う．
-"""
-
 sys.path.append(os.path.join(os.path.dirname(__file__), ''))
 
 class DrpEnv(gym.Env):
@@ -36,7 +29,7 @@ class DrpEnv(gym.Env):
 			time_limit,
 			collision,
 			map_name="map_3x3",
-			reward_list={"goal": 100, "collision": -10, "wait": -10, "move": -1},
+			reward_list={"goal": 100, "collision": -10, "wait": -10, "move": -1, "delay": None},
 			verbose=3,
 			allow_delay: bool = False,
 			event_model: Optional[str] = None,
@@ -75,6 +68,12 @@ class DrpEnv(gym.Env):
 		self.r_coll = reward_list["collision"]
 		self.r_wait = reward_list["wait"]
 		self.r_move = reward_list["move"]
+		self.r_delay = reward_list["delay"]
+		"""
+		遅延中のエージェントに与える報酬の設定値．
+		- None: 従来通り，遅延によって停止させられた行動がmoveかwaitかに応じてr_move/r_waitを使う．
+		- 数値: 遅延中(is_delaysがTrue)は，move/waitを区別せずいかなる場合も常にこの値(*speed)を報酬として使う．
+		"""
 
 		# collision machnism
 		self.collision = collision
@@ -590,12 +589,12 @@ class DrpEnv(gym.Env):
 		エージェントiの報酬を計算．
 		"""
 
-		# 遅延中は，DELAY_REWARDが数値ならmove/wait区別なくその値を使う（Noneなら従来通りの判定に進む）
+		# 遅延中は，r_delayが数値ならmove/wait区別なくその値を報酬とする（Noneならエージェントの行動に応じた値を報酬）
 		if (
 			self.is_delays[i]
-			and DELAY_REWARD is not None
+			and self.r_delay is not None
 		):
-			return DELAY_REWARD * self.speed
+			return self.r_delay * self.speed
 
 		pre_pos_agenti = [
 			self.obs_current_chache[i][X_COORD_IDX],
