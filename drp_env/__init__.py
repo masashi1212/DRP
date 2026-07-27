@@ -83,6 +83,51 @@ for an, map_name in product(agent_num, map_list):
         },
     )
 
+# SafeEnv（衝突回避つき）実行遅延なし
+for an, map_name in product(agent_num, map_list):
+    register(
+        id="drpSafe-{0}agent_{1}-v2".format(an, map_name),
+        entry_point="drp_env.safe_env:SafeEnv",
+        kwargs={
+            "agent_num": an,
+            "speed": speed,
+            "start_ori_array": start_ori_array,
+            "goal_array": goal_array,
+            "visu_delay": visu_delay,
+            "time_limit": time_limit,
+            "collision": collision,
+            "map_name": map_name,
+            "reward_list": reward_list,
+        },
+    )
+
+# SafeEnv（衝突回避つき）実行遅延あり
+for an, map_name in product(agent_num, map_list):
+    register(
+        id="drpSafeDelay-{0}agent_{1}-v1".format(an, map_name),
+        entry_point="drp_env.safe_env:SafeEnv",
+        kwargs={
+            "agent_num": an,
+            "speed": speed,
+            "start_ori_array": start_ori_array,
+            "goal_array": goal_array,
+            "visu_delay": visu_delay,
+            "time_limit": time_limit,
+            "collision": collision,
+            "map_name": map_name,
+            "reward_list": reward_list,
+            "allow_delay": allow_delay,
+            "event_model": event_model,
+            "p_delay": p_delay,
+            "duration_model": duration_model,
+            "min_delay": min_delay,
+            "max_delay": max_delay,
+            "delay_seed": delay_seed,
+            "gauss_mean_ratio": gauss_mean_ratio,
+            "gauss_std_ratio": gauss_std_ratio,
+        },
+    )
+
 neargridmap_list = [
     "map_3x3",
     "map_5x4",
