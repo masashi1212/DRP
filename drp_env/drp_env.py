@@ -44,7 +44,12 @@ class DrpEnv(gym.Env):
 			gauss_std_ratio: Optional[float] = None,
 			save_collision_episodes: bool = False, # 衝突したエピソードの全ステップを保存するか。
 			collision_log_run_id: Optional[str] = None, # 同じ実行のログに共通で付けるID。
+			safe_mode: str = "legacy",
 		  ):
+		if safe_mode not in ("legacy", "occupied_node"):
+			raise ValueError(f"不明なsafe_modeです: {safe_mode!r}（legacy / occupied_node を指定してください）")
+		self.safe_mode = safe_mode
+		"""SafeEnvの回避方式。通常のDrpEnvではSafe処理を適用しない。"""
 		self.verbose = verbose
 		"""ログ出力レベル．0=全部出力，1=エピソード単位の出力，2=出力なし，3=衝突も出力なし"""
 		self.agent_num = agent_num

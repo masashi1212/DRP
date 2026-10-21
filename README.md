@@ -199,6 +199,20 @@ python3 src/main.py --config=iql --env-config=gymma with env_args.time_limit=100
 
 > **注意:** `:` を含む引数はシェルの解析エラーを避けるためシングルクォート `'` で囲んでください。
 
+### Safe処理の切り替え
+
+Safe環境（`drpSafe-...-v2` / `drpSafeDelay-...-v1`）では、実行コマンドの `with` 以降に
+`env_args.safe_mode=occupied_node` を追加すると、他エージェントが現在いるノードへの移動も待機へ置き換えます。
+相手が移動予定でも、遅延の有無にかかわらず待機します。従来方式は `env_args.safe_mode=legacy`（既定値）です。
+既定値は `epymarl/src/config/envs/gymma.yaml` の `env_args.safe_mode` で変更できます。
+
+```bash
+python3 src/main.py --config=iql --env-config=gymma with 'env_args.key=drp_env:drpSafe-2agent_map_3x3-v2' env_args.safe_mode=occupied_node
+```
+
+Pythonから直接生成する場合も、`gym.make(..., safe_mode="occupied_node")` で指定できます。
+通常環境（`drp-...` / `drpDelay-...`）では、この設定を渡してもSafe処理は適用されません。
+
 ### 使用可能なアルゴリズム
 
 `--config=iql` の部分を以下に変更して使用できます:

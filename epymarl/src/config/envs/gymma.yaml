@@ -1,6 +1,7 @@
 env: "gymma"
 
 env_args:
+  safe_mode: legacy # Safe環境のみ: legacy（従来）/ occupied_node（占有中ノードへの移動も待機）
   save_collision_episodes: False # Trueなら衝突したエピソードの全ステップをMyFiles/collision_logs/へ保存。
   key: null
   time_limit: 100
