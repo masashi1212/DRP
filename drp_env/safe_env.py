@@ -11,7 +11,8 @@ class SafeEnv(DrpEnv):
 
 	def step(self, joint_action):
 
-		joint_action = list(joint_action)  # tupleで渡された場合でも要素代入できるようにする
+		pre_safe_actions = [int(action) for action in joint_action]
+		joint_action = list(pre_safe_actions)  # Safe処理前の行動を残し、別のリストを書き換える
 
 		do = True
 		while do:
@@ -21,8 +22,9 @@ class SafeEnv(DrpEnv):
 				if self.current_goal[i] is None: # 自分がノード上にいる時
 					for j in range(self.agent_num):
 						if j != i and joint_action[i] == joint_action[j]:
-							joint_action[i] = self.current_start[i]
-							do = True  # 条件が変わる可能性があるため，もう一度ループを回す
+							if joint_action[i] != self.current_start[i]:
+								joint_action[i] = self.current_start[i]
+								do = True  # 条件が変わる可能性があるため，もう一度ループを回す
 							break
 
 				# 正面衝突
@@ -39,6 +41,9 @@ class SafeEnv(DrpEnv):
 							do = True
 							break
 
-		obs, ri_array, self.terminated, info = super().step(joint_action)
+		obs, ri_array, self.terminated, info = super().step(
+			joint_action,
+			pre_safe_actions=pre_safe_actions,
+		)
 
 		return obs, ri_array, self.terminated, info

@@ -24,6 +24,10 @@ class TimeLimit(GymTimeLimit):
                 not all(done) if isinstance(done, Iterable) else not done
             )
             done = len(observation) * [True]
+            # 環境本体より短い制限でも、その最終ステップまでの衝突ログを直ちに確定する。
+            recorder = getattr(self.env.unwrapped, "_collision_recorder", None)
+            if recorder is not None:
+                recorder.end_episode("wrapper_time_limit", completed=True)
         return observation, reward, done, info
 
 

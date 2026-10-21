@@ -1,6 +1,8 @@
 # Results
 results/
 epymarl/results/
+MyFiles/collision_logs/
+tests/
 
 # Python
 __pycache__/

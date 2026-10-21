@@ -1,6 +1,7 @@
 env: "gymma"
 
 env_args:
+  save_collision_episodes: False # Trueなら衝突したエピソードの全ステップをMyFiles/collision_logs/へ保存。
   key: null
   time_limit: 100
   state_repre_flag: "onehot"  # new

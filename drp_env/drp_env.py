@@ -11,6 +11,7 @@ from drp_env.EE_map import MapMake
 from drp_env.delay_config import DelayConfig
 from drp_env.delay_generator import DelayGenerator
 from drp_env.render_recorder import RenderRecorder
+from drp_env.collision_recorder import CollisionRecorder
 
 X_COORD_IDX = 0
 Y_COORD_IDX = 1
@@ -41,6 +42,8 @@ class DrpEnv(gym.Env):
 			delay_seed: Optional[int] = None,
 			gauss_mean_ratio: Optional[float] = None,
 			gauss_std_ratio: Optional[float] = None,
+			save_collision_episodes: bool = False, # 衝突したエピソードの全ステップを保存するか。
+			collision_log_run_id: Optional[str] = None, # 同じ実行のログに共通で付けるID。
 		  ):
 		self.verbose = verbose
 		"""ログ出力レベル．0=全部出力，1=エピソード単位の出力，2=出力なし，3=衝突も出力なし"""
@@ -162,6 +165,12 @@ class DrpEnv(gym.Env):
 		"""遅延を適用する前に方策が選んだ行動"""
 		self.executed_actions = None
 		"""遅延を適用した後に実際に実行される行動"""
+		self.pre_safe_actions = None
+		"""Safe処理を適用する前に方策が選んだ行動"""
+		self.post_safe_actions = None
+		"""Safe処理を適用した後、遅延処理を適用する前の行動"""
+		self.post_delay_actions = None
+		"""Safe処理と遅延処理を適用した後の行動"""
 		self.is_delays = [False for _ in range(self.agent_num)]
 		"""各エージェントが現在のステップで遅延しているか"""
 
@@ -228,6 +237,8 @@ class DrpEnv(gym.Env):
 		"""render()の初回呼び出し時に生成される、画像保存用のオブジェクト"""
 		self._episode_had_collision = False
 		"""そのエピソード中に衝突が発生したか(画像を残すかどうかの判定に使う)"""
+		# 有効時だけ全ステップを蓄積する記録器。run_idは同じ実行のエピソードを結び付けるID。
+		self._collision_recorder = CollisionRecorder(collision_log_run_id) if save_collision_episodes else None
 
 	def _record_agent_arrival(self, agent_id):
 		if self.agent_arrival_steps[agent_id] < 0:
@@ -283,6 +294,10 @@ class DrpEnv(gym.Env):
 		毎エピソード開始時の環境(全ドローン含む)を初期化．
 		"""
 
+		# 外側のTimeLimit等で終了した場合も、次の初期化前に直前の記録を確定する。
+		if self._collision_recorder is not None:
+			self._collision_recorder.end_episode("reset")
+
 		if self.verbose <= 1 and self.episode_account % 100 == 0:
 			print("現在のエピソード: ", self.episode_account)
 
@@ -322,6 +337,9 @@ class DrpEnv(gym.Env):
 		self.is_delays = [False for _ in range(self.agent_num)]
 		self.planned_actions = None
 		self.executed_actions = None
+		self.pre_safe_actions = None
+		self.post_safe_actions = None
+		self.post_delay_actions = None
 
 		if self._render_recorder is not None:
 			self._render_recorder.end_episode(should_save=self._episode_had_collision)
@@ -334,6 +352,8 @@ class DrpEnv(gym.Env):
 			self._render_recorder.begin_episode(self.episode_account)
 		self.agent_arrival_steps = np.full(self.agent_num, -1, dtype=int)
 		self.episode_cost = 0
+		if self._collision_recorder is not None:
+			self._collision_recorder.begin_episode(self) # 初期位置もステップ0として保存する。
 		if self.verbose <= 1:
 			print('Environment reset obs: \n', self.obs)
 
@@ -346,8 +366,8 @@ class DrpEnv(gym.Env):
 		エージェントがノード上にいる場合はそのノード番号を返し，エッジ上ならNoneを返す．
 		"""
 
-		onehot_obs = np.array(self.obs_onehot)[agent_id, :self.n_nodes]
-		nonzero_nodes = np.flatnonzero(onehot_obs != 0)
+		onehot_obs = np.array(self.obs_onehot)[agent_id, :self.n_nodes] # エージェントが現在どのノード上にいるかを表すone-hotベクトル
+		nonzero_nodes = np.flatnonzero(onehot_obs != 0) # 0でない要素を全て抽出
 		if len(nonzero_nodes) == 1:
 			return int(nonzero_nodes[0])
 		return None
@@ -424,7 +444,7 @@ class DrpEnv(gym.Env):
 		return executed_actions, is_delays
 		
 
-	def step(self, joint_action):
+	def step(self, joint_action, pre_safe_actions=None):
 		"""
 		エージェントの行動を受け取り，1ステップ進行．
 
@@ -436,8 +456,16 @@ class DrpEnv(gym.Env):
 		#transite env based on joint_action
 		self.step_account += 1
 		self.obs_current_chache = copy.deepcopy(self.obs)
-		self.planned_actions = [int(action) for action in joint_action]
+		# 通常環境ではSafe処理がないため、Safe処理前後の行動は同じになる。
+		# SafeEnvからは、書き換え前の行動がpre_safe_actionsとして明示的に渡される。
+		self.pre_safe_actions = [
+			int(action) for action in (joint_action if pre_safe_actions is None else pre_safe_actions)
+		]
+		self.post_safe_actions = [int(action) for action in joint_action]
+		# 既存ログ・報酬計算との互換性のためplanned_actionsも維持する。
+		self.planned_actions = list(self.post_safe_actions)
 		self.executed_actions, self.is_delays = self._apply_execution_delay(self.planned_actions)
+		self.post_delay_actions = list(self.executed_actions)
 
 		obs_prepare = []
 		obs_onehot_prepare = copy.deepcopy(self.obs_onehot)
@@ -593,6 +621,15 @@ class DrpEnv(gym.Env):
 				info["cost"] = self.episode_cost
 
 		info["distance_from_start"] = list(self.distance_from_start)
+		# 衝突時はself.obsが更新されないため、判定に使ったobs_prepareも別に残す。
+		if self._collision_recorder is not None:
+			self._collision_recorder.record_step(self, obs_prepare, info)
+			if all(self.terminated):
+				self._collision_recorder.end_episode(
+					"collision" if info["collision"] and self.collision != "bounceback"
+					else "goal" if info["goal"] else "time_limit",
+					completed=True,
+				)
 
 		return obs, ri_array, self.terminated, info
 
@@ -671,6 +708,9 @@ class DrpEnv(gym.Env):
 		"""
 		環境を閉じる．
 		"""
+
+		if self._collision_recorder is not None:
+			self._collision_recorder.end_episode("closed")
 
 		if self._render_recorder is not None:
 			self._render_recorder.end_episode(should_save=self._episode_had_collision)

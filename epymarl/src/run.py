@@ -49,6 +49,9 @@ def run(_run, _config, _log):
 
     args.unique_token = unique_token
     _run.info["unique_token"] = unique_token
+    if args.env_args.get("save_collision_episodes", False):
+        # 全並列環境へ既存の実験IDを渡し、同じ実行の衝突ログを紐付ける。
+        args.env_args["collision_log_run_id"] = unique_token
     if args.use_tensorboard:
         tb_logs_direc = os.path.join(
             dirname(dirname(abspath(__file__))), "results", "tb_logs"
